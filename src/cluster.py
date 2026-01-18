@@ -5,21 +5,18 @@ import os
 import time
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
-from typing import Literal
 
 # Third-party libraries
 from loguru import logger
 from tqdm import tqdm
 
 # Project libraries
-from config import AWS_REGION_SET, BUILD_DIR, MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_FILE
+from config import BUILD_DIR, MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_FILE
 from masscan import MasscanCommand, MasscanResults
 from scanner import Scanner
 
 
-def build_cluster(
-    cluster_name: str, instance_type: str, build_count: int, region_list: list[Literal[AWS_REGION_SET]]
-) -> list[Scanner]:
+def build_cluster(cluster_name: str, instance_type: str, build_count: int, region_list: list[str]) -> list[Scanner]:
     scanner_list = []
 
     # Build all
@@ -82,6 +79,31 @@ def status_masscan_mission(scanner_list: list[Scanner]) -> MasscanResults | None
     )
 
 
+def wait_for_masscan_mission_to_complete(scanner_list: list[Scanner]):
+    # Wait for progress to reach 100%
+    while True:
+        status = status_masscan_mission(scanner_list)
+        logger.info(
+            f"cluster progress - {status.completion:.2f}%, ETA {status.eta}, {int(status.rate * 1000):,} packet/s, found {status.found}"
+        )
+        if status is None:
+            continue
+        if status.completion >= 100:
+            break
+
+    # Wait for processes to exit
+    finished_scanners = []
+    with tqdm(total=len(scanner_list), desc="Waiting for scanners to finish", unit="scanner") as progress_bar:
+        while len(finished_scanners) < len(scanner_list):
+            start_time = time.time()
+            for scanner in scanner_list:
+                if scanner.name not in finished_scanners and scanner.is_tmux_running():
+                    progress_bar.update()
+                    finished_scanners.append(scanner.name)
+            while time.time() - start_time < 5:
+                time.sleep(0.5)
+
+
 def download_masscan_results(cluster_name: str, scanner_list: list[Scanner]) -> Path:
     result_dir = BUILD_DIR / f"{cluster_name}_output"
     os.makedirs(result_dir, exist_ok=True)
@@ -90,3 +112,9 @@ def download_masscan_results(cluster_name: str, scanner_list: list[Scanner]) -> 
         with open(file=out_file_path, mode="w", encoding="utf-8") as out_file:
             out_file.write(scanner.read_remote_file(remote_file=PurePosixPath(MASSCAN_OUTPUT_FILE)))
     logger.info(f"Saved results to {result_dir}")
+
+
+def delete_cluster(scanner_list: list[Scanner]):
+    for scanner in tqdm(scanner_list, unit="scanner", desc="destroying scanners"):
+        scanner.__del__()
+        scanner.delete_on_exit = False

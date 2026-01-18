@@ -8,7 +8,7 @@ from datetime import timedelta
 from attrs import define, field, validators
 
 # Project libraries
-from config import MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_FILE
+from config import DEFAULT_IP_EXCLUDE_LIST, MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_FILE
 
 
 @define
@@ -52,13 +52,14 @@ class MasscanCommand:
     rate: int = field(validator=validators.and_(validators.ge(1), validators.instance_of(int)))
     retries: int = field(default=1, validator=validators.and_(validators.ge(1), validators.instance_of(int)))
     ip_exclude_list: list[str] = field(
-        default=["10.0.0.1/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1/8"],
+        default=DEFAULT_IP_EXCLUDE_LIST,
         validator=validators.deep_iterable(
             member_validator=validators.instance_of(str), iterable_validator=validators.instance_of(list)
         ),
     )
+    banner: bool = field(default=False, validator=validators.instance_of(bool))
 
-    def create_command(self, shard: int, shard_total: int, seed: str) -> str:
+    def create_base_command(self) -> list[str]:
         out_command = []
         out_command.extend(["sudo", "masscan"])
         for ip in self.ip_include_list:
@@ -67,9 +68,15 @@ class MasscanCommand:
             out_command.extend(["--exclude", ip])
         for port in self.port_list:
             out_command.extend(["--port", port])
+        if self.banner:
+            out_command.append("--banners")
         out_command.extend(["--retries", str(self.retries)])
+        out_command.extend(["--rate", str(self.rate)])
+        return out_command
+
+    def create_command(self, shard: int, shard_total: int, seed: str) -> str:
+        out_command = self.create_base_command()
         out_command.extend(["--shard", f"{shard}/{shard_total}"])
         out_command.extend(["--seed", seed])
-        out_command.extend(["--rate", str(self.rate)])
         out_command.extend([f"-oJ {MASSCAN_OUTPUT_FILE}", f"2>{MASSCAN_ERROR_FILE}"])
         return " ".join(out_command)

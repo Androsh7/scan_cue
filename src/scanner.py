@@ -18,7 +18,7 @@ from fabric import Connection
 from loguru import logger
 
 # Project libraries
-from config import AWS_EC2_STATES, AWS_REGION_SET, AWS_SSM_PROFILE_NAME, AWS_STARTUP_SCRIPT, BUILD_DIR, SSH_TIMEOUT
+from config import AWS_EC2_STATES, AWS_SSM_PROFILE_NAME, AWS_STARTUP_SCRIPT, BUILD_DIR, SSH_TIMEOUT
 
 
 @define
@@ -26,9 +26,7 @@ class Scanner:
     # Required parameters
     name: str = field(validator=validators.instance_of(str))
     instance_type: str = field(validator=validators.instance_of(str))
-    region: Literal[AWS_REGION_SET] = field(
-        validator=validators.and_(validators.instance_of(str), validators.in_(AWS_REGION_SET))
-    )
+    region: str = field(validator=validators.instance_of(str))
     delete_on_exit: bool = field(default=True, validator=validators.instance_of(bool))
 
     # Build configs
@@ -50,9 +48,7 @@ class Scanner:
     public_ip_address: IPv4Address = field(converter=IPv4Address, init=False)
 
     # Scan data
-    command_id: str = field(validator=validators.instance_of(str), init=False)
     command: str = field(validator=validators.instance_of(str), init=False)
-    command_status: str = field(validator=validators.instance_of(str), init=False)
 
     def _create_ssh_key_pair(self, boto3_client: any):
         """Builds an ssh rsa key pair"""
@@ -288,6 +284,20 @@ class Scanner:
         """
         with self.connection() as conn:
             conn.run(f'tmux new -s scan -d "{command}"', hide="both")
+            self.command = command
+
+    def is_tmux_running(self) -> bool:
+        """Returns True if the tmux session is still running"""
+        with self.connection() as conn:
+            result = conn.run(
+                "tmux has-session -t scan",
+                warn=True,
+                hide="both",
+            )
+            logger.debug(
+                f"{self.name} - tmux session running: {result.ok}, stdout: {result.stdout}, stderr: {result.stderr}"
+            )
+            return result.ok
 
     def read_remote_file(self, remote_file: PurePosixPath, tail: int = None) -> str:
         """Returns the content of a remote file

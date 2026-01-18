@@ -9,16 +9,26 @@ from pathlib import Path
 # Third-party libraries
 import boto3
 from loguru import logger
+from tqdm import tqdm
 
 # Project libraries
 from aws_query import list_all_scanners
 from cluster import (
     build_cluster,
+    delete_cluster,
     download_masscan_results,
     start_masscan_mission,
-    status_masscan_mission,
+    wait_for_masscan_mission_to_complete,
 )
-from config import AWS_REGION_SET, BUILD_DIR, VERSION
+from config import (
+    BUILD_DIR,
+    DEFAULT_CLUSTER_NAME,
+    DEFAULT_EC2_TYPE,
+    DEFAULT_IP_EXCLUDE_LIST,
+    DEFAULT_MASSCAN_RATE,
+    DEFAULT_MASSCAN_RETRIES,
+    VERSION,
+)
 from masscan import MasscanCommand
 
 
@@ -35,15 +45,69 @@ def main():
     )
     parser.add_argument("--list-all-scanners", action="store_true", help="Shows all scanners")
     parser.add_argument("--destroy-all-scanners", action="store_true", help="Destroys all scanners")
+    parser.add_argument(
+        "--name", type=str, default=DEFAULT_CLUSTER_NAME, help=f"Name of the cluster, default: {DEFAULT_CLUSTER_NAME}"
+    )
+    parser.add_argument("--ip", action="append", dest="ips", help="List of IP addresses to scan")
+    parser.add_argument(
+        "--exclude-ip",
+        action="append",
+        default=DEFAULT_IP_EXCLUDE_LIST,
+        dest="exclude_ips",
+        help=f"List of IP addresses to exclude, default: {DEFAULT_IP_EXCLUDE_LIST}",
+    )
+    parser.add_argument("--port", action="append", dest="ports", help="List of ports to scan")
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=DEFAULT_MASSCAN_RETRIES,
+        help=f"Number of retries for masscan, default: {DEFAULT_MASSCAN_RETRIES}",
+    )
+    parser.add_argument(
+        "--rate",
+        type=int,
+        default=DEFAULT_MASSCAN_RATE,
+        help=f"Max rate of scanning in packets-per-second, default: {DEFAULT_MASSCAN_RATE:,}",
+    )
+    parser.add_argument("--banners", action="store_true", help='Enables the "--banners" flag for masscan')
+    parser.add_argument(
+        "--region",
+        action="append",
+        dest="regions",
+        help="The AWS region list to use, if multiple regions are specified agents will be assigned round-robin",
+    )
+    parser.add_argument("--scanner-count", type=int, help="The number of scanners to build")
+    parser.add_argument(
+        "--scanner-type",
+        type=str,
+        default=DEFAULT_EC2_TYPE,
+        help=f'The ec2 device type to use, default: "{DEFAULT_EC2_TYPE}"',
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="info",
+        choices=["trace", "debug", "info", "warning", "critical"],
+        help='Sets the application log-level, default: "info"',
+    )
     args = parser.parse_args()
+
+    # Set log-level
+    logger.remove()
+    logger.add(
+        sys.stdout,
+        level=args.log_level.upper(),
+    )
+
+    # List and/or destroy scanners
     if args.list_all_scanners or args.destroy_all_scanners:
-        scanner_list = list_all_scanners(AWS_REGION_SET)
+        scanner_list = list_all_scanners()
         if scanner_list is None:
             logger.info("No scanners found")
         else:
             logger.info(f"Found {len(scanner_list)} active scanners: {scanner_list}")
-        if args.destroy_all_scanners:
-            for scanner in scanner_list:
+        if args.destroy_all_scanners and len(scanner_list) > 0:
+            for scanner in tqdm(scanner_list, desc="destroying scanners", unit="scanner"):
                 instance_id = scanner["id"]
                 region = scanner["region"]
                 key_name = scanner["key_pair"]
@@ -59,27 +123,32 @@ def main():
     # Make configuration dir
     os.makedirs(args.build_dir, mode=500, exist_ok=True)
 
-    cluster_name = "test_cluster_16"
+    # Handle missing inputs
+    if args.ips is None:
+        parser.error("No IPs were specified")
+    if args.ports is None:
+        parser.error("No ports were specified")
+
+    cluster_name = args.name
+    masscan_command = MasscanCommand(
+        ip_include_list=args.ips,
+        ip_exclude_list=args.exclude_ips,
+        port_list=args.ports,
+        rate=args.rate,
+        retries=args.retries,
+        banner=args.banners,
+    )
+    logger.info(f'masscan command: "{" ".join(masscan_command.create_base_command())}"')
     scanner_list = build_cluster(
         cluster_name=cluster_name,
         instance_type="t4g.nano",
-        build_count=20,
-        region_list=["us-west-2"],
-    )
-    masscan_command = MasscanCommand(
-        ip_include_list=["1.1.1.1/0"], port_list=["80,443,8080,8443"], rate=25000000, retries=3
+        build_count=args.scanner_count,
+        region_list=args.regions,
     )
     start_masscan_mission(scanner_list, masscan_command=masscan_command)
-    while True:
-        status = status_masscan_mission(scanner_list)
-        logger.info(
-            f"cluster progress - {status.completion:.2f}%, ETA {status.eta}, {int(status.rate * 1000):,} packet/s, found {status.found}"
-        )
-        if status is None:
-            continue
-        if status.completion >= 100:
-            break
+    wait_for_masscan_mission_to_complete(scanner_list)
     download_masscan_results(cluster_name=cluster_name, scanner_list=scanner_list)
+    delete_cluster(scanner_list)
 
 
 if __name__ == "__main__":
