@@ -71,5 +71,5 @@ class MasscanCommand:
         out_command.extend(["--shard", f"{shard}/{shard_total}"])
         out_command.extend(["--seed", seed])
         out_command.extend(["--rate", str(self.rate)])
-        out_command.extend([f"1>{MASSCAN_OUTPUT_FILE}", f"2>{MASSCAN_ERROR_FILE}"])
+        out_command.extend([f"-oJ {MASSCAN_OUTPUT_FILE}", f"2>{MASSCAN_ERROR_FILE}"])
         return " ".join(out_command)
