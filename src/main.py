@@ -75,6 +75,8 @@ def main():
         logger.info(
             f"cluster progress - {status.completion:.2f}%, ETA {status.eta}, {int(status.rate * 1000):,} packet/s, found {status.found}"
         )
+        if status is None:
+            continue
         if status.completion >= 100:
             break
     download_masscan_results(cluster_name=cluster_name, scanner_list=scanner_list)

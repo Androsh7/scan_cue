@@ -54,7 +54,7 @@ def start_masscan_mission(scanner_list: list[Scanner], masscan_command: MasscanC
         )
 
 
-def status_masscan_mission(scanner_list: list[Scanner]) -> MasscanResults:
+def status_masscan_mission(scanner_list: list[Scanner]) -> MasscanResults | None:
     total_found = 0
     total_rate = 0.0
     total_completion = 0.0
@@ -72,7 +72,8 @@ def status_masscan_mission(scanner_list: list[Scanner]) -> MasscanResults:
             count += 1
         except AttributeError:
             pass
-
+    if count is None:
+        return None
     return MasscanResults(
         rate=total_rate,
         completion=total_completion / count if count else 0,
