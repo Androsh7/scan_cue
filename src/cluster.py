@@ -3,7 +3,6 @@
 # Standard libraries
 import os
 import time
-from datetime import timedelta
 from pathlib import Path, PurePosixPath
 
 # Third-party libraries
@@ -50,12 +49,14 @@ def start_masscan_mission(scanner_list: list[Scanner], masscan_command: MasscanC
             masscan_command.create_command(shard=index, shard_total=len(scanner_list), seed="scan_cue")
         )
 
+
 def status_masscan_mission(scanner: Scanner) -> MasscanResults | None:
     status_string = scanner.read_remote_file(MASSCAN_ERROR_FILE, tail=1)
     try:
         return MasscanResults.from_rate_string(status_string)
     except AttributeError:
         return None
+
 
 def status_masscan_cluster_missions(scanner_list: list[Scanner]):
     completed_scans = []
@@ -72,7 +73,10 @@ def status_masscan_cluster_missions(scanner_list: list[Scanner]):
                 result_list.append(status)
         if len(result_list) > 0:
             combined_result = MasscanResults.from_result_list(result_list)
-            logger.info(f'scan progress - {int(combined_result.rate * 1000):,} packets/s, ETA {combined_result.eta}, completion {combined_result.completion:.2f}%')
+            logger.info(
+                f"scan progress - {int(combined_result.rate * 1000):,} packets/s, ETA {combined_result.eta}, completion {combined_result.completion:.2f}%"
+            )
+
 
 def download_masscan_results(cluster_name: str, scanner_list: list[Scanner]) -> Path:
     result_dir = BUILD_DIR / f"{cluster_name}_output"

@@ -319,7 +319,7 @@ class Scanner:
                 with self.connection() as conn:
                     remote_file_str = conn.run(command, hide="both").stdout.strip()
                 return remote_file_str
-            except (OSError, EOFError) as ex:
+            except (OSError, EOFError):
                 if attempt >= retries:
                     raise
                 time.sleep(0.5 * (attempt + 1))
