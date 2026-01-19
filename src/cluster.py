@@ -13,6 +13,7 @@ from tqdm import tqdm
 from config import BUILD_DIR, MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_FILE
 from masscan import MasscanCommand, MasscanResults
 from scanner import Scanner
+from utils import merge_json_files
 
 
 def build_cluster(cluster_name: str, instance_type: str, build_count: int, region_list: list[str]) -> list[Scanner]:
@@ -81,11 +82,19 @@ def status_masscan_cluster_missions(scanner_list: list[Scanner]):
 def download_masscan_results(cluster_name: str, scanner_list: list[Scanner]) -> Path:
     result_dir = BUILD_DIR / f"{cluster_name}_output"
     os.makedirs(result_dir, exist_ok=True)
-    for scanner in tqdm(scanner_list, unit="scanner", desc="saving output"):
+    output_file_paths = []
+
+    # Download the raw JSON files
+    for scanner in tqdm(scanner_list, unit="scanner", desc="downloading results"):
         out_file_path = result_dir / f"{scanner.name}.json"
+        output_file_paths.append(out_file_path)
         with open(file=out_file_path, mode="w", encoding="utf-8") as out_file:
             out_file.write(scanner.read_remote_file(remote_file=PurePosixPath(MASSCAN_OUTPUT_FILE)))
-    logger.info(f"Saved results to {result_dir}")
+    
+    # Merge json files
+    combined_file_path = BUILD_DIR / f'{cluster_name}_combined.json'
+    merge_json_files(files_to_merge=output_file_paths, output_file=BUILD_DIR / combined_file_path)
+    logger.info(f"Saved results to {combined_file_path}")
 
 
 def delete_cluster(scanner_list: list[Scanner]):
