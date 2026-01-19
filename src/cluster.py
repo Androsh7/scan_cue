@@ -97,7 +97,7 @@ def wait_for_masscan_mission_to_complete(scanner_list: list[Scanner]):
         while len(finished_scanners) < len(scanner_list):
             start_time = time.time()
             for scanner in scanner_list:
-                if scanner.name not in finished_scanners and scanner.is_tmux_running():
+                if scanner.name not in finished_scanners and not scanner.is_tmux_running():
                     progress_bar.update()
                     finished_scanners.append(scanner.name)
             while time.time() - start_time < 5:

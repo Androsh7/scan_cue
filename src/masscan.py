@@ -13,8 +13,8 @@ from config import DEFAULT_IP_EXCLUDE_LIST, MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_F
 
 @define
 class MasscanResults:
-    rate: float = field(validator=validators.instance_of(float))
-    completion: float = field(validator=validators.instance_of(float))
+    rate: float = field(converter=float)
+    completion: float = field(converter=float)
     eta: timedelta = field(validator=validators.instance_of(timedelta))
     found: int = field(validator=validators.and_(validators.ge(0), validators.instance_of(int)))
 
