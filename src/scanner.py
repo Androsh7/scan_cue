@@ -4,6 +4,7 @@
 import os
 import shutil
 import sys
+import time
 from ipaddress import IPv4Address
 from pathlib import Path, PurePosixPath
 from typing import Literal
@@ -216,9 +217,9 @@ class Scanner:
             host=str(self.public_ip_address),
             user="ec2-user",
             port=22,
+            connect_timeout=SSH_TIMEOUT,
             connect_kwargs={
                 "key_filename": str(self.private_key_path),
-                "timeout": SSH_TIMEOUT,
             },
         )
 
@@ -299,7 +300,7 @@ class Scanner:
             )
             return result.ok
 
-    def read_remote_file(self, remote_file: PurePosixPath, tail: int = None) -> str:
+    def read_remote_file(self, remote_file: PurePosixPath, tail: int = None, retries: int = 2) -> str:
         """Returns the content of a remote file
 
         Args:
@@ -313,6 +314,12 @@ class Scanner:
             command = f"sed 's/\\r/\\n/g' {remote_file} | tail -n {tail}"
         else:
             command = f"cat {remote_file}"
-        with self.connection() as conn:
-            remote_file_str = conn.run(command, hide="both").stdout.strip()
-        return remote_file_str
+        for attempt in range(retries + 1):
+            try:
+                with self.connection() as conn:
+                    remote_file_str = conn.run(command, hide="both").stdout.strip()
+                return remote_file_str
+            except (OSError, EOFError) as ex:
+                if attempt >= retries:
+                    raise
+                time.sleep(0.5 * (attempt + 1))
