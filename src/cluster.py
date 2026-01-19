@@ -50,59 +50,29 @@ def start_masscan_mission(scanner_list: list[Scanner], masscan_command: MasscanC
             masscan_command.create_command(shard=index, shard_total=len(scanner_list), seed="scan_cue")
         )
 
-
-def status_masscan_mission(scanner_list: list[Scanner]) -> MasscanResults | None:
-    total_found = 0
-    total_rate = 0.0
-    total_completion = 0.0
-    total_eta = 0
-    count = 0
-
-    for scanner in scanner_list:
-        status_string = scanner.read_remote_file(MASSCAN_ERROR_FILE, tail=1)
-        try:
-            results = MasscanResults.from_rate_string(status_string)
-            total_found += results.found
-            total_rate += results.rate
-            total_completion += results.completion
-            total_eta += results.eta.total_seconds()
-            count += 1
-        except AttributeError:
-            pass
-    if count is None:
+def status_masscan_mission(scanner: Scanner) -> MasscanResults | None:
+    status_string = scanner.read_remote_file(MASSCAN_ERROR_FILE, tail=1)
+    try:
+        return MasscanResults.from_rate_string(status_string)
+    except AttributeError:
         return None
-    return MasscanResults(
-        rate=total_rate,
-        completion=total_completion / count if count else 0,
-        eta=timedelta(seconds=int(total_eta / count if count else 1)),
-        found=total_found,
-    )
 
-
-def wait_for_masscan_mission_to_complete(scanner_list: list[Scanner]):
-    # Wait for progress to reach 100%
-    while True:
-        status = status_masscan_mission(scanner_list)
-        logger.info(
-            f"cluster progress - {status.completion:.2f}%, ETA {status.eta}, {int(status.rate * 1000):,} packet/s, found {status.found}"
-        )
-        if status is None:
-            continue
-        if status.completion >= 100:
-            break
-
-    # Wait for processes to exit
-    finished_scanners = []
-    with tqdm(total=len(scanner_list), desc="Waiting for scanners to finish", unit="scanner") as progress_bar:
-        while len(finished_scanners) < len(scanner_list):
-            start_time = time.time()
-            for scanner in scanner_list:
-                if scanner.name not in finished_scanners and not scanner.is_tmux_running():
-                    progress_bar.update()
-                    finished_scanners.append(scanner.name)
-            while time.time() - start_time < 5:
-                time.sleep(0.5)
-
+def status_masscan_cluster_missions(scanner_list: list[Scanner]):
+    completed_scans = []
+    while len(completed_scans) < len(scanner_list):
+        result_list = []
+        for scanner in scanner_list:
+            if scanner.name in completed_scans:
+                continue
+            status = status_masscan_mission(scanner)
+            if (status is None or status.completion >= 100) and not scanner.is_tmux_running():
+                completed_scans.append(scanner.name)
+                continue
+            elif status is not None:
+                result_list.append(status)
+        if len(result_list) > 0:
+            combined_result = MasscanResults.from_result_list(result_list)
+            logger.info(f'scan progress - {int(combined_result.rate * 1000):,} packets/s, ETA {combined_result.eta}, completion {combined_result.completion:.2f}%')
 
 def download_masscan_results(cluster_name: str, scanner_list: list[Scanner]) -> Path:
     result_dir = BUILD_DIR / f"{cluster_name}_output"

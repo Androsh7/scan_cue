@@ -18,7 +18,7 @@ from cluster import (
     delete_cluster,
     download_masscan_results,
     start_masscan_mission,
-    wait_for_masscan_mission_to_complete,
+    status_masscan_cluster_missions,
 )
 from config import (
     BUILD_DIR,
@@ -146,7 +146,7 @@ def main():
         region_list=args.regions,
     )
     start_masscan_mission(scanner_list, masscan_command=masscan_command)
-    wait_for_masscan_mission_to_complete(scanner_list)
+    status_masscan_cluster_missions(scanner_list)
     download_masscan_results(cluster_name=cluster_name, scanner_list=scanner_list)
     delete_cluster(scanner_list)
 

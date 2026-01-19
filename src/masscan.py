@@ -26,16 +26,37 @@ class MasscanResults:
         )
         if matches.group(7) is not None:
             eta_split = matches.group(7).split(":")
+            completion=float(matches.group(3))
             eta = timedelta(hours=int(eta_split[0]), minutes=int(eta_split[1]), seconds=int(eta_split[2]))
         else:
+            # Scan is waiting to complete
             eta = timedelta(seconds=max(int(matches.group(6)), 1))
+            completion=100.0
         return cls(
             rate=float(matches.group(1)),
-            completion=float(matches.group(3)),
+            completion=completion,
             eta=eta,
             found=int(matches.group(9)),
         )
 
+    @classmethod
+    def from_result_list(cls, result_list: list["MasscanResults"]):
+        rate = 0
+        completion = 0
+        eta_seconds = 0
+        found = 0
+        for result in result_list:
+            rate += result.rate
+            completion += result.completion
+            eta_seconds += result.eta.total_seconds()
+            found += result.found
+
+        return cls(
+            rate=rate,
+            completion=completion / len(result_list),
+            eta=timedelta(seconds=int(eta_seconds / len(result_list))),
+            found=found,
+        )
 
 @define
 class MasscanCommand:
