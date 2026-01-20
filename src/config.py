@@ -3,15 +3,21 @@
 # Standard libraries
 from pathlib import Path
 
-# Third-party libraries
-
 VERSION = "0.1.0"
 SOURCE_DIR = Path(__file__).parent
 BUILD_DIR = Path().home() / ".scan_cue"
 
 # AWS constants
-with open(file=SOURCE_DIR / "setup_script.sh", encoding="utf-8") as setup_file:
-    AWS_STARTUP_SCRIPT = setup_file.read()
+AWS_STARTUP_SCRIPT = """\
+#!/bin/bash
+set -euo pipefail
+
+sudo dnf -y install git make gcc libpcap-devel tmux
+git clone https://github.com/robertdavidgraham/masscan.git
+cd masscan/
+make
+sudo make install
+"""
 AWS_EC2_STATES = ("pending", "running", "shutting-down", "terminated", "stopping", "stopped")
 AWS_SSM_PROFILE_NAME = "scan_cue_scanner_profile"
 DEFAULT_EC2_TYPE = "t4g.nano"
