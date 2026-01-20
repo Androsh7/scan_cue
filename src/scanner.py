@@ -19,7 +19,7 @@ from fabric import Connection
 from loguru import logger
 
 # Project libraries
-from config import AWS_EC2_STATES, AWS_SSM_PROFILE_NAME, AWS_STARTUP_SCRIPT, BUILD_DIR, SSH_TIMEOUT
+from src.config import AWS_EC2_STATES, AWS_SSM_PROFILE_NAME, AWS_STARTUP_SCRIPT, BUILD_DIR, SSH_TIMEOUT
 
 
 @define

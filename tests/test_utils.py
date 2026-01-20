@@ -9,21 +9,10 @@ from pathlib import Path
 # Project libraries
 from src.utils import merge_json_files
 
+
 def test_json_merge():
-    expected_merged_file = [
-        {"test": 12345},
-        {"test": 23456},
-        {"test": 34567},
-        {"test": 45678},
-        {"test": 56789}
-    ]
-    test_list = [
-        [{"test": 12345}],
-        [{"test": 23456}],
-        [{"test": 34567}],
-        [{"test": 45678}],
-        [{"test": 56789}]
-    ]
+    expected_merged_file = [{"test": 12345}, {"test": 23456}, {"test": 34567}, {"test": 45678}, {"test": 56789}]
+    test_list = [[{"test": 12345}], [{"test": 23456}], [{"test": 34567}], [{"test": 45678}], [{"test": 56789}]]
 
     # Create mock json files
     merge_dir = Path(__file__).parent / "test_dir"
@@ -34,16 +23,17 @@ def test_json_merge():
         with open(file=input_file_path, mode="w", encoding="utf-8") as file:
             json.dump(sub_dict, file)
         input_file_paths.append(input_file_path)
-    
+
     # Run merge
     merged_file_path = merge_dir / "merged.json"
     merge_json_files(files_to_merge=input_file_paths, output_file=merged_file_path)
 
     # Compare merged and unmerged file
-    with open(file=merged_file_path, mode="r", encoding="utf-8") as merge_file:
+    with open(file=merged_file_path, encoding="utf-8") as merge_file:
         assert json.load(merge_file) == expected_merged_file
 
     # Delete test dir
     shutil.rmtree(merge_dir)
+
 
 test_json_merge()

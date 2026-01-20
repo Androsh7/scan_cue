@@ -6,6 +6,7 @@ from pathlib import Path
 # Third-party libraries
 from tqdm import tqdm
 
+
 def merge_json_files(files_to_merge: list[Path], output_file: Path):
     """Merges json files
 
@@ -19,5 +20,5 @@ def merge_json_files(files_to_merge: list[Path], output_file: Path):
             with open(file=file_path, mode="rb") as result_file:
                 combined_file.write(result_file.read().replace(b"\r\n", b"")[1:-1])
             if index < len(files_to_merge):
-                combined_file.write(b',')
+                combined_file.write(b",")
         combined_file.write(b"]")

@@ -12,15 +12,15 @@ from loguru import logger
 from tqdm import tqdm
 
 # Project libraries
-from aws_query import list_all_scanners
-from cluster import (
+from src.aws_query import list_all_scanners
+from src.cluster import (
     build_cluster,
     delete_cluster,
     download_masscan_results,
     start_masscan_mission,
     status_masscan_cluster_missions,
 )
-from config import (
+from src.config import (
     BUILD_DIR,
     DEFAULT_CLUSTER_NAME,
     DEFAULT_EC2_TYPE,
@@ -29,7 +29,7 @@ from config import (
     DEFAULT_MASSCAN_RETRIES,
     VERSION,
 )
-from masscan import MasscanCommand
+from src.masscan import MasscanCommand
 
 
 def main():
