@@ -8,11 +8,10 @@ from pathlib import Path
 
 # Third-party libraries
 import boto3
-from loguru import logger
-from tqdm import tqdm
+from rich.live import Live
 
 # Project libraries
-from src.aws_query import list_all_scanners
+from src.aws import list_all_scanners
 from src.cluster import (
     build_cluster,
     delete_cluster,
@@ -27,9 +26,11 @@ from src.config import (
     DEFAULT_IP_EXCLUDE_LIST,
     DEFAULT_MASSCAN_RATE,
     DEFAULT_MASSCAN_RETRIES,
+    LOG_LEVELS,
     VERSION,
 )
 from src.masscan import MasscanCommand
+from src.ui import ScannerUI
 
 
 def main():
@@ -87,68 +88,71 @@ def main():
         "--log-level",
         type=str,
         default="info",
-        choices=["trace", "debug", "info", "warning", "critical"],
+        choices=LOG_LEVELS,
         help='Sets the application log-level, default: "info"',
     )
     args = parser.parse_args()
 
-    # Set log-level
-    logger.remove()
-    logger.add(
-        sys.stdout,
-        level=args.log_level.upper(),
-    )
+    # Setup UI
+    ui = ScannerUI(log_level=args.log_level)
+    with Live(ui, console=ui.console, refresh_per_second=1, transient=False) as live:
+        # List and/or destroy scanners
+        if args.list_all_scanners or args.destroy_all_scanners:
+            scanner_list = list_all_scanners(ui=ui)
+            if scanner_list is None:
+                ui.log("info", "No scanners found")
+            else:
+                ui.log("info", f"Found {len(scanner_list)} active scanners: {scanner_list}")
+            if args.destroy_all_scanners and len(scanner_list) > 0:
+                ui.show_progress_bar()
+                ui.update_progress_bar(
+                    current_progress=0, total_progress=len(scanner_list), description="Destroying scanners"
+                )
+                for scanner in scanner_list:
+                    ui.advance_progress_bar()
+                    instance_id = scanner["id"]
+                    region = scanner["region"]
+                    key_name = scanner["key_pair"]
 
-    # List and/or destroy scanners
-    if args.list_all_scanners or args.destroy_all_scanners:
-        scanner_list = list_all_scanners()
-        if scanner_list is None:
-            logger.info("No scanners found")
-        else:
-            logger.info(f"Found {len(scanner_list)} active scanners: {scanner_list}")
-        if args.destroy_all_scanners and len(scanner_list) > 0:
-            for scanner in tqdm(scanner_list, desc="destroying scanners", unit="scanner"):
-                instance_id = scanner["id"]
-                region = scanner["region"]
-                key_name = scanner["key_pair"]
+                    # Delete the instance
+                    ui.log("info", f"Deleting EC2 {instance_id} in region {region} with key {key_name}")
+                    boto3_client = boto3.client("ec2", region_name=region)
+                    boto3_client.terminate_instances(InstanceIds=[instance_id])
+                    if key_name is not None:
+                        boto3_client.delete_key_pair(KeyName=key_name)
+                ui.hide_progress_bar()
+            sys.exit()
 
-                # Delete the instance
-                logger.info(f"Deleting EC2 {instance_id} in region {region} with key {key_name}")
-                boto3_client = boto3.client("ec2", region_name=region)
-                boto3_client.terminate_instances(InstanceIds=[instance_id])
-                if key_name is not None:
-                    boto3_client.delete_key_pair(KeyName=key_name)
-        sys.exit()
+        # Make configuration dir
+        os.makedirs(args.build_dir, mode=500, exist_ok=True)
 
-    # Make configuration dir
-    os.makedirs(args.build_dir, mode=500, exist_ok=True)
+        # Handle missing inputs
+        if args.ips is None:
+            parser.error("No IPs were specified")
+        if args.ports is None:
+            parser.error("No ports were specified")
 
-    # Handle missing inputs
-    if args.ips is None:
-        parser.error("No IPs were specified")
-    if args.ports is None:
-        parser.error("No ports were specified")
-
-    cluster_name = args.name
-    masscan_command = MasscanCommand(
-        ip_include_list=args.ips,
-        ip_exclude_list=args.exclude_ips,
-        port_list=args.ports,
-        rate=args.rate,
-        retries=args.retries,
-        banner=args.banners,
-    )
-    logger.info(f'masscan command: "{" ".join(masscan_command.create_base_command())}"')
-    scanner_list = build_cluster(
-        cluster_name=cluster_name,
-        instance_type="t4g.nano",
-        build_count=args.scanner_count,
-        region_list=args.regions,
-    )
-    start_masscan_mission(scanner_list, masscan_command=masscan_command)
-    status_masscan_cluster_missions(scanner_list)
-    download_masscan_results(cluster_name=cluster_name, scanner_list=scanner_list)
-    delete_cluster(scanner_list)
+        cluster_name = args.name
+        masscan_command = MasscanCommand(
+            ip_include_list=args.ips,
+            ip_exclude_list=args.exclude_ips,
+            port_list=args.ports,
+            rate=args.rate,
+            retries=args.retries,
+            banner=args.banners,
+        )
+        ui.log("info", f'masscan command: "{" ".join(masscan_command.create_base_command())}"')
+        scanner_list = build_cluster(
+            ui=ui,
+            cluster_name=cluster_name,
+            instance_type="t4g.nano",
+            build_count=args.scanner_count,
+            region_list=args.regions,
+        )
+        start_masscan_mission(ui=ui, scanner_list=scanner_list, masscan_command=masscan_command)
+        status_masscan_cluster_missions(ui=ui, scanner_list=scanner_list)
+        download_masscan_results(ui=ui, cluster_name=cluster_name, scanner_list=scanner_list)
+        delete_cluster(ui=ui, scanner_list=scanner_list)
 
 
 if __name__ == "__main__":

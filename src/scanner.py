@@ -12,19 +12,27 @@ from typing import Literal
 # Third-party libraries
 import boto3
 from attrs import define, field, validators
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from fabric import Connection
-from loguru import logger
+
+from src.aws import (
+    create_ec2,
+    create_ec2_key_pair,
+    create_security_group,
+    get_ami_id,
+    get_default_vpc_id,
+    get_vpc_subnet_id,
+)
 
 # Project libraries
-from src.config import AWS_EC2_STATES, AWS_SSM_PROFILE_NAME, AWS_STARTUP_SCRIPT, BUILD_DIR, SSH_TIMEOUT
+from src.config import AWS_EC2_STATES, AWS_STARTUP_SCRIPT, BUILD_DIR, SSH_TIMEOUT
+from src.ui import ScannerUI
+from src.utils import create_ssh_key_pair
 
 
 @define
 class Scanner:
     # Required parameters
+    ui: ScannerUI = field(validator=validators.instance_of(ScannerUI))
     name: str = field(validator=validators.instance_of(str))
     instance_type: str = field(validator=validators.instance_of(str))
     region: str = field(validator=validators.instance_of(str))
@@ -51,137 +59,6 @@ class Scanner:
     # Scan data
     command: str = field(validator=validators.instance_of(str), init=False)
 
-    def _create_ssh_key_pair(self, boto3_client: any):
-        """Builds an ssh rsa key pair"""
-        # Generate a private key
-        key = rsa.generate_private_key(backend=default_backend(), public_exponent=65537, key_size=2048)
-
-        # Serialize the private key to PEM format
-        private_key = key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.NoEncryption(),
-        )
-
-        # Serialize the public key to OpenSSH format
-        public_key = key.public_key().public_bytes(
-            encoding=serialization.Encoding.OpenSSH,
-            format=serialization.PublicFormat.OpenSSH,
-        )
-
-        # Write the private key to a file
-        self.private_key_path = self.setup_dir / "private_rsa.key"
-        with open(self.private_key_path, "wb") as private_key_file:
-            private_key_file.write(private_key)
-
-        # Write the public key to a file
-        self.public_key_path = self.setup_dir / "public_rsa.key"
-        with open(self.public_key_path, "wb") as public_key_file:
-            public_key_file.write(public_key)
-
-        # Create an AWS key pair
-        self.key_pair_name = f"key-pair-{self.name}"
-        try:
-            boto3_client.delete_key_pair(KeyName=self.key_pair_name)
-            logger.debug(f"Deleted existing key pair {self.key_pair_name}")
-        except boto3.ClientError as ex:
-            if ex.response["Error"]["Code"] != "InvalidKeyPair.NotFound":
-                raise
-        boto3_client.import_key_pair(
-            KeyName=self.key_pair_name,
-            PublicKeyMaterial=public_key,
-        )
-        logger.debug(
-            f'Creating key pair: private_path="{self.private_key_path}", public_path="{self.public_key_path}", KeyName="{self.key_pair_name}"'
-        )
-
-    def _set_vpc(self, boto3_client: any):
-        """Uses the default VPC"""
-        vpc_response = boto3_client.describe_vpcs(Filters=[{"Name": "isDefault", "Values": ["true"]}])["Vpcs"][0]
-        self.vpc_id = vpc_response["VpcId"]
-        logger.debug(f"Using VPC: {self.vpc_id}")
-
-    def _set_subnet(self, boto3_client: any):
-        subnet_response = boto3_client.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [self.vpc_id]}])[
-            "Subnets"
-        ][0]
-        self.subnet_id = subnet_response["SubnetId"]
-        logger.debug(f"Using Subnet: {self.subnet_id}")
-
-    def _set_security_group(self, boto3_client: any):
-        security_group_query_response = boto3_client.describe_security_groups(
-            Filters=[
-                {"Name": "group-name", "Values": ["scan-cue-ssh-only"]},
-                {"Name": "vpc-id", "Values": [self.vpc_id]},
-            ]
-        )
-        if security_group_query_response["SecurityGroups"]:
-            self.security_group_id = security_group_query_response["SecurityGroups"][0]["GroupId"]
-            logger.debug(f"Using existing security group: {self.security_group_id}")
-        else:
-            security_group_build_response = boto3_client.create_security_group(
-                GroupName="scan-cue-ssh-only",
-                Description="Allow ssh access (Scan Cue)",
-                VpcId=self.vpc_id,
-            )
-            self.security_group_id = security_group_build_response["GroupId"]
-
-            # Add ssh access to the security group
-            logger.debug(f"Created security group: {self.security_group_id}")
-            boto3_client.authorize_security_group_ingress(
-                GroupId=self.security_group_id,
-                IpPermissions=[
-                    {
-                        "IpProtocol": "tcp",
-                        "FromPort": 22,
-                        "ToPort": 22,
-                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
-                    }
-                ],
-            )
-            logger.debug(f"Added ssh ingress rule to security group: {self.security_group_id}")
-
-    def _create_ec2(self, boto3_client: any):
-        self._set_vpc(boto3_client)
-        self._set_subnet(boto3_client)
-        self._set_security_group(boto3_client)
-        self._create_ssh_key_pair(boto3_client)
-
-        # Get the AMI ID for the region
-        self.ami_id = boto3.client("ssm", region_name=self.region).get_parameter(
-            Name="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
-        )["Parameter"]["Value"]
-        logger.debug(f"Using AMI ID: {self.ami_id}")
-
-        build_response = boto3_client.run_instances(
-            ImageId=self.ami_id,
-            InstanceType=self.instance_type,
-            KeyName=self.key_pair_name,
-            MinCount=1,
-            MaxCount=1,
-            UserData=AWS_STARTUP_SCRIPT,
-            IamInstanceProfile={"Name": AWS_SSM_PROFILE_NAME},
-            NetworkInterfaces=[
-                {
-                    "DeviceIndex": 0,
-                    "SubnetId": self.subnet_id,
-                    "Groups": [self.security_group_id],
-                    "AssociatePublicIpAddress": True,
-                }
-            ],
-            TagSpecifications=[
-                {
-                    "ResourceType": "instance",
-                    "Tags": [
-                        {"Key": "Name", "Value": self.name},
-                        {"Key": "Type", "Value": "scan_cue_scanner"},
-                    ],
-                }
-            ],
-        )
-        self.instance_id = build_response["Instances"][0]["InstanceId"]
-        logger.debug(f"Created EC2: {self.instance_id}")
-
     def __del__(self):
         if sys.meta_path is None:
             return
@@ -189,27 +66,47 @@ class Scanner:
             return
         if not hasattr(self, "instance_id"):
             return
-        logger.debug(f"Destroying EC2 {self.name}")
+        self.ui.log("debug", f"Destroying EC2 {self.name}")
         boto3_client = boto3.client("ec2", region_name=self.region)
 
         # Destroy EC2
-        logger.debug(f"Destroying instance {self.instance_id}")
+        self.ui.log("debug", f"Destroying instance {self.instance_id}")
         boto3_client.terminate_instances(InstanceIds=[self.instance_id])
 
         # Destroy key pair
-        logger.debug(f"Destroying key pair {self.key_pair_name}")
+        self.ui.log("debug", f"Destroying key pair {self.key_pair_name}")
         boto3_client.delete_key_pair(KeyName=self.key_pair_name)
 
         # Delete build folder
-        logger.debug(f"Destroying setup dir {self.setup_dir}")
+        self.ui.log("debug", f"Destroying setup dir {self.setup_dir}")
         shutil.rmtree(self.setup_dir)
 
     def __attrs_post_init__(self):
+        # Build setup dir
         self.setup_dir = BUILD_DIR / self.name
         os.makedirs(self.setup_dir, mode=500, exist_ok=True)
-        logger.debug(f"Building ec2 {self.name}")
-        boto3_client = boto3.client("ec2", region_name=self.region)
-        self._create_ec2(boto3_client)
+
+        # Build EC2
+        self.ui.log("debug", f"Building ec2 {self.name}")
+        self.key_pair_name = f"ssh-key-{self.name}"
+        self.private_key_path, self.public_key_path = create_ssh_key_pair(output_dir=self.setup_dir)
+        create_ec2_key_pair(
+            ui=self.ui, region=self.region, key_pair_name=self.key_pair_name, public_key_path=self.public_key_path
+        )
+        self.ami_id = get_ami_id(region=self.region)
+        self.vpc_id = get_default_vpc_id(region=self.region)
+        self.security_group_id = create_security_group(ui=self.ui, region=self.region, vpc_id=self.vpc_id)
+        self.subnet_id = get_vpc_subnet_id(region=self.region, vpc_id=self.vpc_id)
+        self.instance_id = create_ec2(
+            region=self.region,
+            ami_id=self.ami_id,
+            instance_type=self.instance_type,
+            key_pair_name=self.key_pair_name,
+            startup_script=AWS_STARTUP_SCRIPT,
+            subnet_id=self.subnet_id,
+            security_group_id=self.security_group_id,
+            name=self.name,
+        )
 
     def connection(self) -> Connection:
         """Create a fabric connection object"""
@@ -223,6 +120,21 @@ class Scanner:
             },
         )
 
+    def cloudinit_status(self, retries: int = 2) -> bool:
+        for attempt in range(retries + 1):
+            try:
+                with self.connection() as conn:
+                    cloud_init_status = conn.run("cloud-init status", hide="both").stdout.strip().split(" ")[1]
+                if cloud_init_status != "done":
+                    self.ui.log("debug", f"{self.name} cloud-init status is {cloud_init_status}")
+                    return False
+                return True
+            except (OSError, EOFError) as ex:
+                self.ui.log("warning", f"Attempt to status {self.name} cloud-init status failed with error: {ex}")
+                if attempt >= retries:
+                    raise
+                time.sleep(0.5 * (attempt + 1))
+
     def is_built(self) -> bool:
         """Returns True if the instance is built"""
         boto3_client = boto3.client("ec2", region_name=self.region)
@@ -233,7 +145,7 @@ class Scanner:
         ][0]
         self.instance_state = instance_describe_dict["State"]["Name"]
         if self.instance_state == "pending":
-            logger.debug(f'{self.name} instance state is "pending"')
+            self.ui.log("debug", f'{self.name} instance state is "pending"')
             return False
         if self.instance_state not in ["pending", "running"]:
             raise KeyError(f"Unexpected instance state {self.instance_state}")
@@ -245,12 +157,12 @@ class Scanner:
         )
         status = instance_status_dict.get("InstanceStatuses")
         if status is None:
-            logger.debug(f"{self.name} instance status is not present")
+            self.ui.log("debug", f"{self.name} instance status is not present")
             return False
         system_status = status[0]["SystemStatus"]["Status"]
         instance_status = status[0]["InstanceStatus"]["Status"]
         if system_status != "ok" or instance_status != "ok":
-            logger.debug(f'{self.name} instance_status="{instance_status}", system_status="{instance_status}"')
+            self.ui.log("debug", f'{self.name} instance_status="{instance_status}", system_status="{instance_status}"')
             return False
 
         # Set public and private IP address
@@ -260,12 +172,7 @@ class Scanner:
             self.public_ip_address = IPv4Address(instance_describe_dict["PublicIpAddress"])
 
         # Validate cloud-init status
-        with self.connection() as conn:
-            cloud_init_status = conn.run("cloud-init status", hide="both").stdout.strip().split(" ")[1]
-        if cloud_init_status != "done":
-            logger.debug(f"{self.name} cloud-init status is {cloud_init_status}")
-            return False
-        return True
+        return self.cloudinit_status()
 
     def get_state(self) -> str:
         """Returns the EC2 state"""
@@ -287,18 +194,26 @@ class Scanner:
             conn.run(f'tmux new -s scan -d "{command}"', hide="both")
             self.command = command
 
-    def is_tmux_running(self) -> bool:
+    def is_tmux_running(self, retries: int = 2) -> bool:
         """Returns True if the tmux session is still running"""
-        with self.connection() as conn:
-            result = conn.run(
-                "tmux has-session -t scan",
-                warn=True,
-                hide="both",
-            )
-            logger.debug(
-                f"{self.name} - tmux session running: {result.ok}, stdout: {result.stdout}, stderr: {result.stderr}"
-            )
-            return result.ok
+        for attempt in range(retries + 1):
+            try:
+                with self.connection() as conn:
+                    result = conn.run(
+                        "tmux has-session -t scan",
+                        warn=True,
+                        hide="both",
+                    )
+                    self.ui.log(
+                        "debug",
+                        f"{self.name} - tmux session running: {result.ok}, stdout: {result.stdout}, stderr: {result.stderr}",
+                    )
+                    return result.ok
+            except (OSError, EOFError) as ex:
+                self.ui.log("warning", f"Attempt to status {self.name} tmux status failed with error: {ex}")
+                if attempt >= retries:
+                    raise
+                time.sleep(0.5 * (attempt + 1))
 
     def read_remote_file(self, remote_file: PurePosixPath, tail: int = None, retries: int = 2) -> str:
         """Returns the content of a remote file
@@ -319,7 +234,10 @@ class Scanner:
                 with self.connection() as conn:
                     remote_file_str = conn.run(command, hide="both").stdout.strip()
                 return remote_file_str
-            except (OSError, EOFError):
+            except (OSError, EOFError) as ex:
+                self.ui.log(
+                    "warning", f"Attempt to read remote file {remote_file} on {self.name} failed with error: {ex}"
+                )
                 if attempt >= retries:
                     raise
                 time.sleep(0.5 * (attempt + 1))

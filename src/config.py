@@ -34,3 +34,20 @@ DEFAULT_MASSCAN_RETRIES = 3
 
 # Default arguments
 DEFAULT_CLUSTER_NAME = "scan_cue_cluster"
+
+# Log level
+LOG_LEVELS = ("trace", "debug", "info", "warning", "critical")
+LOG_LEVEL_NUM_DICT = {
+    "trace": 0,
+    "debug": 1,
+    "info": 2,
+    "warning": 3,
+    "critical": 4,
+}
+LOG_COLOR_DICT = {
+    "trace": "blue",
+    "debug": "blue",
+    "info": "white",
+    "warning": "orange",
+    "critical": "red",
+}
