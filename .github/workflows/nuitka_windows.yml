@@ -30,8 +30,8 @@ jobs:
           python -m nuitka `
             --onefile `
             --output-dir=dist `
-            --remove-output `
             --follow-imports `
+            --output-filename=scan_cue.exe `
             scan_cue/main.py
 
           Get-ChildItem dist -Recurse | Format-Table -AutoSize
