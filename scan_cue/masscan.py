@@ -8,7 +8,7 @@ from datetime import timedelta
 from attrs import define, field, validators
 
 # Project libraries
-from src.config import DEFAULT_IP_EXCLUDE_LIST, MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_FILE
+from scan_cue.config import DEFAULT_IP_EXCLUDE_LIST, MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_FILE
 
 
 @define

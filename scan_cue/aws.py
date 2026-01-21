@@ -8,7 +8,7 @@ from typing import Literal
 import boto3
 
 # Project libraries
-from src.ui import ScannerUI
+from scan_cue.ui import ScannerUI
 
 
 def load_regions(ui: ScannerUI) -> list[str]:

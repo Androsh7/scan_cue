@@ -6,7 +6,7 @@ import time
 from rich.live import Live
 
 # Project libraries
-from src.ui import ScannerUI
+from scan_cue.ui import ScannerUI
 
 
 def test_ui():

@@ -4,7 +4,7 @@
 from datetime import timedelta
 
 # Project libraries
-from src.masscan import MasscanCommand, MasscanResults
+from scan_cue.masscan import MasscanCommand, MasscanResults
 
 
 def test_create_masscan_command():

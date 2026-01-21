@@ -11,15 +11,15 @@ import boto3
 from rich.live import Live
 
 # Project libraries
-from src.aws import list_all_scanners
-from src.cluster import (
+from scan_cue.aws import list_all_scanners
+from scan_cue.cluster import (
     build_cluster,
     delete_cluster,
     download_masscan_results,
     start_masscan_mission,
     status_masscan_cluster_missions,
 )
-from src.config import (
+from scan_cue.config import (
     BUILD_DIR,
     DEFAULT_CLUSTER_NAME,
     DEFAULT_EC2_TYPE,
@@ -29,8 +29,8 @@ from src.config import (
     LOG_LEVELS,
     VERSION,
 )
-from src.masscan import MasscanCommand
-from src.ui import ScannerUI
+from scan_cue.masscan import MasscanCommand
+from scan_cue.ui import ScannerUI
 
 
 def main():

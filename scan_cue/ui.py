@@ -14,7 +14,7 @@ from rich.rule import Rule
 from rich.text import Text
 
 # Project libraries
-from src.config import LOG_COLOR_DICT, LOG_LEVEL_NUM_DICT, LOG_LEVELS
+from scan_cue.config import LOG_COLOR_DICT, LOG_LEVEL_NUM_DICT, LOG_LEVELS
 
 
 class LiveLog:

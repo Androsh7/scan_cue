@@ -38,4 +38,4 @@ select = [
 max-line-length = 120
 
 [tool.setuptools]
-packages = ["src"]
+packages = ["scan_cue"]

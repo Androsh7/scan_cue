@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 
 # Project libraries
-from src.utils import merge_json_files
+from scan_cue.utils import merge_json_files
 
 
 class MockProgress:

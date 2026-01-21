@@ -7,11 +7,11 @@ from pathlib import Path, PurePosixPath
 
 # Third-party libraries
 # Project libraries
-from src.config import BUILD_DIR, MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_FILE
-from src.masscan import MasscanCommand, MasscanResults
-from src.scanner import Scanner
-from src.ui import ScannerUI
-from src.utils import merge_json_files
+from scan_cue.config import BUILD_DIR, MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_FILE
+from scan_cue.masscan import MasscanCommand, MasscanResults
+from scan_cue.scanner import Scanner
+from scan_cue.ui import ScannerUI
+from scan_cue.utils import merge_json_files
 
 
 def build_cluster(

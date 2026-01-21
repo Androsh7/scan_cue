@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 # Third-party libraries
 # Project libraries
-from src.ui import ScannerUI
+from scan_cue.ui import ScannerUI
 
 
 def merge_json_files(ui: ScannerUI, files_to_merge: list[Path], output_file: Path):

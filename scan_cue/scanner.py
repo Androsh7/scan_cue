@@ -14,7 +14,7 @@ import boto3
 from attrs import define, field, validators
 from fabric import Connection
 
-from src.aws import (
+from scan_cue.aws import (
     create_ec2,
     create_ec2_key_pair,
     create_security_group,
@@ -24,9 +24,9 @@ from src.aws import (
 )
 
 # Project libraries
-from src.config import AWS_EC2_STATES, AWS_STARTUP_SCRIPT, BUILD_DIR, SSH_TIMEOUT
-from src.ui import ScannerUI
-from src.utils import create_ssh_key_pair
+from scan_cue.config import AWS_EC2_STATES, AWS_STARTUP_SCRIPT, BUILD_DIR, SSH_TIMEOUT
+from scan_cue.ui import ScannerUI
+from scan_cue.utils import create_ssh_key_pair
 
 
 @define
