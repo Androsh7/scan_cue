@@ -1,0 +1,43 @@
+name: build-windows-exe
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -U pip wheel setuptools
+          python -m pip install -U ".[dev]"
+
+      - name: Build .exe with Nuitka
+        shell: pwsh
+        run: |
+          python -m nuitka `
+            --onefile `
+            --output-dir=dist `
+            --remove-output `
+            --follow-imports `
+            scan_cue/main.py
+
+          Get-ChildItem dist -Recurse | Format-Table -AutoSize
+
+    #   - name: Upload artifact
+    #     uses: actions/upload-artifact@v4
+    #     with:
+    #       name: windows-exe
+    #       path: dist\*.exe
