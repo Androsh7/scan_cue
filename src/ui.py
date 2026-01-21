@@ -102,16 +102,14 @@ class ScannerUI:
             total=total_progress,
             completed=current_progress,
             description=description,
-            refresh=True,
         )
 
     def advance_progress_bar(self, advance: float = 1):
         """Advances the progress bar"""
         self._progress.advance(task_id=self._progress_task_id, advance=advance)
 
-    def render(self):
-        term_height = self.console.size.height
-
+    def render(self, console: Console):
+        term_height = console.size.height
         reserved = 10
         log_height = max(3, term_height - reserved)
 
@@ -128,4 +126,4 @@ class ScannerUI:
         )
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
-        yield from self.render().__rich_console__(console, options)
+        yield from self.render(console).__rich_console__(console, options)
