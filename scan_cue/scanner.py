@@ -213,7 +213,7 @@ class Scanner:
                 self.ui.log("warning", f"Attempt to status {self.name} tmux status failed with error: {ex}")
                 if attempt >= retries:
                     raise
-                time.sleep(0.5 * (attempt + 1))
+                time.sleep(1 * (attempt + 1))
 
     def read_remote_file(self, remote_file: PurePosixPath, tail: int = None, retries: int = 2) -> str:
         """Returns the content of a remote file
@@ -240,4 +240,4 @@ class Scanner:
                 )
                 if attempt >= retries:
                     raise
-                time.sleep(0.5 * (attempt + 1))
+                time.sleep(1 * (attempt + 1))

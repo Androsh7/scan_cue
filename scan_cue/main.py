@@ -36,7 +36,7 @@ from scan_cue.ui import ScannerUI
 def main():
     """Main function"""
     parser = argparse.ArgumentParser(
-        prog="Scan Cue", description="Orchestration tool for masscan and nmap using AWS assets"
+        prog="scan_cue", description="Orchestration tool for masscan and nmap using AWS assets"
     )
     parser.add_argument(
         "--version", action="version", version=f"Scan Cue v{VERSION}", help="Displays the version of Scan Cue"
@@ -75,7 +75,7 @@ def main():
         "--region",
         action="append",
         dest="regions",
-        help="The AWS region list to use, if multiple regions are specified agents will be assigned round-robin",
+        help="The AWS regions to use, if multiple regions are specified agents will be assigned round-robin",
     )
     parser.add_argument("--scanner-count", type=int, help="The number of scanners to build")
     parser.add_argument(
@@ -91,7 +91,22 @@ def main():
         choices=LOG_LEVELS,
         help='Sets the application log-level, default: "info"',
     )
+    parser.add_argument(
+        "--output-file",
+        type=Path,
+        default=Path().cwd() / "scan_results.csv",
+        help=f'The path to write the results to, default: {Path().cwd() / "scan_results.csv"}'
+    )
     args = parser.parse_args()
+
+    # Handle missing inputs
+    if args.list_all_scanners or args.destroy_all_scanners:
+        pass
+    else:
+        if args.ips is None:
+            parser.error("No IPs were specified")
+        if args.ports is None:
+            parser.error("No ports were specified")
 
     # Setup UI
     ui = ScannerUI(log_level=args.log_level)
@@ -126,12 +141,6 @@ def main():
         # Make configuration dir
         os.makedirs(args.build_dir, mode=500, exist_ok=True)
 
-        # Handle missing inputs
-        if args.ips is None:
-            parser.error("No IPs were specified")
-        if args.ports is None:
-            parser.error("No ports were specified")
-
         cluster_name = args.name
         masscan_command = MasscanCommand(
             ip_include_list=args.ips,
@@ -151,7 +160,7 @@ def main():
         )
         start_masscan_mission(ui=ui, scanner_list=scanner_list, masscan_command=masscan_command)
         status_masscan_cluster_missions(ui=ui, scanner_list=scanner_list)
-        download_masscan_results(ui=ui, cluster_name=cluster_name, scanner_list=scanner_list)
+        download_masscan_results(ui=ui, scanner_list=scanner_list, output_file_path=args.output_file)
         delete_cluster(ui=ui, scanner_list=scanner_list)
 
 

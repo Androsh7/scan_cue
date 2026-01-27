@@ -1,7 +1,8 @@
 """Defines functions for building multiple scanners"""
 
 # Standard libraries
-import os
+import csv
+import json
 import time
 from pathlib import Path, PurePosixPath
 
@@ -17,6 +18,18 @@ from scan_cue.utils import merge_json_files
 def build_cluster(
     ui: ScannerUI, cluster_name: str, instance_type: str, build_count: int, region_list: list[str]
 ) -> list[Scanner]:
+    """Build a cluster of EC2s
+
+    Args:
+        ui: UI object
+        cluster_name: Name of the cluster
+        instance_type: The instance type, I.E: "t4g.nano"
+        build_count: The number of instances to build
+        region_list: The list of regions to pick from
+
+    Returns:
+        List of scanners
+    """
     scanner_list = []
     ui.show_progress_bar()
     ui.update_progress_bar(current_progress=0, total_progress=build_count, description="Building scanners")
@@ -39,8 +52,8 @@ def build_cluster(
     while len(completed_builds) < len(scanner_list):
         start_time = time.time()
         for scanner in scanner_list:
+            ui.advance_progress_bar(0)
             if scanner.name not in completed_builds and scanner.is_built():
-                ui.advance_progress_bar()
                 completed_builds.append(scanner.name)
         while time.time() - start_time < 5:
             time.sleep(0.5)
@@ -50,6 +63,13 @@ def build_cluster(
 
 
 def start_masscan_mission(ui: ScannerUI, scanner_list: list[Scanner], masscan_command: MasscanCommand):
+    """Starts masscan missions across a cluster
+
+    Args:
+        ui: UI object
+        scanner_list: The list of scanners
+        masscan_command: The masscan command object
+    """
     ui.show_progress_bar()
     ui.update_progress_bar(
         current_progress=0, total_progress=len(scanner_list), description="Starting masscan missions"
@@ -63,6 +83,14 @@ def start_masscan_mission(ui: ScannerUI, scanner_list: list[Scanner], masscan_co
 
 
 def status_masscan_mission(scanner: Scanner) -> MasscanResults | None:
+    """Status a masscan mission on a scanner
+
+    Args:
+        scanner: The scanner to status
+
+    Returns:
+        The masscan progress object or None if the progress could not be parsed
+    """
     status_string = scanner.read_remote_file(MASSCAN_ERROR_FILE, tail=1)
     try:
         return MasscanResults.from_rate_string(status_string)
@@ -71,6 +99,12 @@ def status_masscan_mission(scanner: Scanner) -> MasscanResults | None:
 
 
 def status_masscan_cluster_missions(ui: ScannerUI, scanner_list: list[Scanner]):
+    """Runs status_masscan_mission across a cluster
+
+    Args:
+        ui: The UI object
+        scanner_list: The list of scanners
+    """
     ui.show_progress_bar()
     ui.update_progress_bar(current_progress=0, total_progress=100, description="Running scan missions")
     completed_scans = []
@@ -98,29 +132,55 @@ def status_masscan_cluster_missions(ui: ScannerUI, scanner_list: list[Scanner]):
     ui.hide_progress_bar()
 
 
-def download_masscan_results(ui: ScannerUI, cluster_name: str, scanner_list: list[Scanner]) -> Path:
+def download_masscan_results(
+    ui: ScannerUI, scanner_list: list[Scanner], output_file_path: Path
+):
+    """Download masscan results and combine them into a csv file
+
+    Args:
+        ui: The UI object
+        scanner_list: The list of scanners
+        output_file_path: The output path to the csv
+    """
     ui.show_progress_bar()
     ui.update_progress_bar(current_progress=0, total_progress=len(scanner_list), description="Downloading results")
-    result_dir = BUILD_DIR / f"{cluster_name}_output"
-    os.makedirs(result_dir, exist_ok=True)
-    output_file_paths = []
 
-    # Download the raw JSON files
-    for scanner in scanner_list:
-        ui.advance_progress_bar()
-        out_file_path = result_dir / f"{scanner.name}.json"
-        output_file_paths.append(out_file_path)
-        with open(file=out_file_path, mode="w", encoding="utf-8") as out_file:
-            out_file.write(scanner.read_remote_file(remote_file=PurePosixPath(MASSCAN_OUTPUT_FILE)))
+    # Download the raw JSON files and write them to a CSV file
+    with open(file=output_file_path, mode="w", encoding="utf-8", newline="") as out_file:
+        writer = csv.writer(out_file)
+        writer.writerow(["ip", "port", "timestamp", "ttl", "banner"])
+        for scanner in scanner_list:
+            ui.advance_progress_bar()
+            masscan_dict_list = json.loads(scanner.read_remote_file(remote_file=PurePosixPath(MASSCAN_OUTPUT_FILE)))
+            try:
+                for masscan_dict in masscan_dict_list:
+                    ip = masscan_dict["ip"]
+                    timestamp = masscan_dict["timestamp"]
+                    for port_dict in masscan_dict["ports"]:
+                        port = port_dict["port"]
+                        ttl = port_dict["ttl"]
+                        writer.writerow(
+                            [
+                                ip,
+                                port,
+                                timestamp,
+                                ttl,
+                                json.dumps(port_dict["service"]) if port_dict.get("service") is not None else None,
+                            ]
+                        )
+            except KeyError:
+                ui.log("warning", f"Failed to parse: {masscan_dict}")
     ui.hide_progress_bar()
-
-    # Merge json files
-    combined_file_path = BUILD_DIR / f"{cluster_name}_combined.json"
-    merge_json_files(ui=ui, files_to_merge=output_file_paths, output_file=BUILD_DIR / combined_file_path)
-    ui.log("info", f"Saved results to {combined_file_path}")
+    ui.log("info", f"Saved results to {output_file_path}")
 
 
 def delete_cluster(ui: ScannerUI, scanner_list: list[Scanner]):
+    """Deletes a list of scanners
+
+    Args:
+        ui: The UI object
+        scanner_list: The list of scanners
+    """
     ui.show_progress_bar()
     ui.update_progress_bar(current_progress=0, total_progress=len(scanner_list), description="Destroying scanners")
     for scanner in scanner_list:
