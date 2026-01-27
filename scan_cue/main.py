@@ -95,7 +95,7 @@ def main():
         "--output-file",
         type=Path,
         default=Path().cwd() / "scan_results.csv",
-        help=f'The path to write the results to, default: {Path().cwd() / "scan_results.csv"}'
+        help=f"The path to write the results to, default: {Path().cwd() / 'scan_results.csv'}",
     )
     args = parser.parse_args()
 

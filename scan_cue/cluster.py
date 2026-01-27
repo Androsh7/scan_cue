@@ -8,11 +8,10 @@ from pathlib import Path, PurePosixPath
 
 # Third-party libraries
 # Project libraries
-from scan_cue.config import BUILD_DIR, MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_FILE
+from scan_cue.config import MASSCAN_ERROR_FILE, MASSCAN_OUTPUT_FILE
 from scan_cue.masscan import MasscanCommand, MasscanResults
 from scan_cue.scanner import Scanner
 from scan_cue.ui import ScannerUI
-from scan_cue.utils import merge_json_files
 
 
 def build_cluster(
@@ -132,9 +131,7 @@ def status_masscan_cluster_missions(ui: ScannerUI, scanner_list: list[Scanner]):
     ui.hide_progress_bar()
 
 
-def download_masscan_results(
-    ui: ScannerUI, scanner_list: list[Scanner], output_file_path: Path
-):
+def download_masscan_results(ui: ScannerUI, scanner_list: list[Scanner], output_file_path: Path):
     """Download masscan results and combine them into a csv file
 
     Args:
