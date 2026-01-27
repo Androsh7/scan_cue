@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 PARENT_DIR = Path(__file__).parent
+PYTHON_VERSION = "3.13"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="build.py", description="Build scan_cue executable")
@@ -17,12 +18,6 @@ if __name__ == "__main__":
         choices=["x86_64", "aarch64"],
         required=True,
         help="Target architecture (x86_64 or aarch64)",
-    )
-    linux_parser.add_argument(
-        "--python-version",
-        type=str,
-        required=True,
-        help="Python version (major.minor) to use (e.g., 3.9, 3.10, 3.11)",
     )
     linux_parser.add_argument(
         "--libc",
@@ -47,8 +42,8 @@ if __name__ == "__main__":
 
     # Build a linux executable
     if args.platform == "linux":
-        container_name = f"scan_cue_compiler_{args.architecture}_{args.libc}_py{args.python_version}"
-        image_name = f"androsh7/nuitka-compiler:latest-{args.architecture}-{args.libc}-py{args.python_version}"
+        container_name = f"scan_cue_compiler_{args.architecture}_{args.libc}_py{PYTHON_VERSION}"
+        image_name = f"androsh7/nuitka-compiler:latest-{args.architecture}-{args.libc}-py{PYTHON_VERSION}"
         subprocess.run(
             f"""\
 docker create --name {container_name} {image_name} sleep infinity \
