@@ -22,6 +22,7 @@ dev = [
     "nuitka",
     "pytest",
     "ruff",
+    "zstandard",
 ]
 
 [tool.ruff]
