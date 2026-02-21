@@ -1,0 +1,14 @@
+# VS Code
+.vscode/
+
+# Python
+.venv/
+__pycache__/
+*.egg-info/
+build/
+main.*/
+
+# Project
+*.exe
+*.bin
+*.csv

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scan_cue"
+version = "0.1.0"
+description = "Orchestration tool for masscan and nmap using AWS assets"
+requires-python = ">=3.13"
+dependencies = [
+    "attrs",
+    "boto3",
+    "cryptography",
+    "fabric",
+    "loguru",
+    "rich",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = [
+    "nuitka",
+    "pytest",
+    "ruff",
+    "zstandard",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+select = [
+    "E", # Pycodestyle errors
+    "F", # Pyflakes
+    "I", # Isort
+    "PL", # Pylint
+    "UP", # Pyupgrade
+]
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.setuptools]
+packages = ["scan_cue"]
